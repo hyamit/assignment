@@ -1,0 +1,195 @@
+Json
+-----
+
+import json
+
+input = """
+     "srrg.shared-risk-resource-group": {
+        "srrg.fdn": "MD=CISCO_EPNM!SRRG=5242894",
+        "srrg.user-label": " CHCO_FSRLG_timestamp",
+        "srrg.resource-fdn-list": {
+            "srrg.resource-fdn": [
+                "MD=CISCO_EPNM!TL=10.10.1.3:[WDMSIDE-B]--10.10.1.4:[WDMSIDE-E]",
+                "MD=CISCO_EPNM!TL=10.10.1.3:[WDMSIDE-C]--10.10.1.4:[WDMSIDE-G]"
+            ]
+        },
+        "srrg.status": "OPERATION_SUCCESSFUL",
+        "srrg.message": "STATUS:COMPLETED\nSRRGCallcompleted\n"
+    }
+"""
+
+class JsonParser:
+    def __init__(self, json_str):
+        json_str = json_str.encode('ascii', 'ignore')
+        json_str = json_str.decode('ascii')
+        json_str = json_str.replace("\n", " ")
+        self.json_str = json_str
+
+    def is_valid_json(self):
+        try:
+            # self.json_str = self.json_str.replace('\n', '\\n')
+            json_object = json.loads(self.json_str)
+
+        except ValueError as e:
+            print("Invalid JSON input:", e, "\n")
+            return False
+        return True
+
+    def make_valid_json(self):
+        """
+        This function is used to correct the format of json string
+        Note: json string format given in the assignment is not valid one
+        :return: None
+        """
+
+        pattern_1 = """{{ {}  }}"""
+        # lets apply pattern_1 and see if json becomes valid
+        temp = self.json_str
+        print("Trying to correct format & build valid Json string..\n")
+        self.json_str = pattern_1.format(self.json_str)
+
+        if self.is_valid_json():
+            print("Input string converted to valid Json string..\n")
+        else:
+            self.json_str = temp
+            raise Exception("Json can't be build with available patterns. "
+                            "Please upgrade the modules with more patterns")
+
+    def parse_string(self):
+        """
+        This function will parse the string & returns dict(python obj), json_obj
+        :return: python_obj, json_obj
+        """
+
+        if not self.is_valid_json():
+            self.make_valid_json()
+        json_dict = json.loads(self.json_str)
+        json_dict = json_dict.get('srrg.shared-risk-resource-group')
+        json_dict = {key.replace("srrg.", "").replace("-", "_"): value for key, value in json_dict.items()}
+        json_obj = json.dumps(json_dict, indent=2)
+
+        return json_dict, json_obj
+
+
+if __name__ == "__main__":
+    parser = JsonParser(json_str=input)
+    output_dict, output_str = parser.parse_string()
+    print(f"output_dict: {output_dict}")
+    print("*"*100)
+    print(f"output_json_str: {output_str}")
+
+====================================================================
+
+XML Builder
+-----------
+
+import xml.etree.ElementTree as ET
+
+
+class Config:
+    xml_template = """
+        <p:shared-risk-resource-group-config xmlns:p="urn:cisco:params:xml:ns:yang:sb:srrg:v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:cisco:params:xml:ns:yang:sb:srrg:v1 cisco-srrg.xsd">
+            <p:user-label>{user_label}</p:user-label>
+            <p:description>{description}</p:description>
+            <p:resource-pool-ref>{resource_pool_ref}</p:resource-pool-ref>
+            <p:resource-fdn-list>
+               {resource_fdns} 
+            </p:resource-fdn-list>
+        </p:shared-risk-resource-group-config>
+        """
+
+
+class XMLParser:
+    @staticmethod
+    def build_xml_srrg_request(request):
+        """
+        This function takes the request from the user & builds the XML template
+        :param request: request is nothing but an input given by user in the dict format.
+        :return: srrg_request : An XML string after building with the inputs given by user
+        """
+        user_label = request.get("user_label", None)
+        description = request.get("description", None)
+        resource_pool_ref = request.get("resource_pool_ref", None)
+        resource_fdns = request.get("resource_fdns", None)
+
+        resource_pool_ref = resource_pool_ref.replace("<", "&lt;").replace(">", "&gt;")
+
+        resource_fdns = "\n".join(["<p:resource-fdn>{}</p:resource-fdn>".format(fdn)
+                                   for fdn in resource_fdns])
+        srrg_request = Config.xml_template.format(user_label=user_label, description=description,
+                            resource_pool_ref=resource_pool_ref, resource_fdns=resource_fdns)
+        return srrg_request
+
+    @staticmethod
+    def is_valid_xml(xml_str):
+        """
+        This function is used to check whether an xml built is valid or not
+        :param xml_str: takes the input xml string
+        :return: True/False
+        """
+        try:
+            ET.fromstring(xml_str)
+            return True
+        except ET.ParseError:
+            return False
+
+    @staticmethod
+    def parse_xml_print_data(xml_str):
+        """
+        This function is used to parse the XML which we have built & print the each element
+        :param xml_str: xml which we have built using 'build_xml_srrg_request' function
+        :return: None
+        """
+        root = ET.fromstring(xml_str)
+
+        # Define namespace map
+        ns = {'p': 'urn:cisco:params:xml:ns:yang:sb:srrg:v1'}
+
+        # Access elements and attributes
+        user_label = root.find('.//p:user-label', namespaces=ns).text
+        description = root.find('.//p:description', namespaces=ns).text
+        resource_pool_ref = root.find('.//p:resource-pool-ref', namespaces=ns).text
+
+        print("\nParsed Data:")
+        print("*************")
+        print("User Label:", user_label)
+        print("Description:", description)
+        print("Resource Pool Reference:", resource_pool_ref)
+
+        # Access elements in the resource-fdn-list
+        resource_fdns = root.findall('.//p:resource-fdn', namespaces=ns)
+        for resource_fdn in resource_fdns:
+            print("Resource FDN:", resource_fdn.text)
+
+
+def main():
+    input = {
+        "user_label": "CHCO_FSRLG_timestamp",
+        "description": "Hello World",
+        "resource_pool_ref": "MD=CISCO_EPNM!SRRGPL=<SRLG_ADAPTER_CONFIG_POOL_NAME>",
+        "resource_fdns": ["MD=CISCO_EPNM!TL=10.10.1.3:[WDMSIDE-B]--10.10.1.4:[WDMSIDE-E]",
+                          "MD=CISCO_EPNM!TL=10.10.1.3:[WDMSIDE-C]--10.10.1.4:[WDMSIDE-G]"
+                          ]
+    }
+
+    output = XMLParser.build_xml_srrg_request(input)
+    print("*"*100)
+    print("Built XML Request:")
+    print(output)
+    if XMLParser.is_valid_xml(output):
+        print("*" * 100)
+        print("XML Built is valid one..")
+        print("*" * 100)
+    else:
+        print("*" * 100)
+        print("Invalid XMl..")
+    XMLParser.parse_xml_print_data(output)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
